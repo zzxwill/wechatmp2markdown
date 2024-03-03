@@ -3,17 +3,22 @@ package format
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fengxxc/wechatmp2markdown/parse"
 	"github.com/fengxxc/wechatmp2markdown/util"
 )
+
+const imagePath = "resources/img"
 
 // Format format article
 func Format(article parse.Article) (string, map[string][]byte) {
@@ -58,7 +63,7 @@ func legalizationFilenameForWindows(name string) string {
 }
 
 // FormatAndSave fomat article and save to local file
-func FormatAndSave(article parse.Article, filePath string) error {
+func FormatAndSave(article parse.Article, createTime time.Time, filePath string, meta []string) error {
 	// basrPath := filepath.Join(filePath, )
 	var basePath string
 	var fileName string
@@ -76,25 +81,35 @@ func FormatAndSave(article parse.Article, filePath string) error {
 		wd, _ := os.Getwd()
 		filePath = strings.Replace(filePath, ".", wd, 1)
 	}
+
+	year := strconv.Itoa(createTime.Year())
+	fmt.Println("year: ", year)
+
 	if strings.HasSuffix(filePath, ".md") {
 		// basePath = filePath[:len(filePath)-len(".md")]
 		basePath = filePath[:strings.LastIndex(filePath, separator)]
-		fileName = filePath
+		fileName = filepath.Join(filePath, year)
 	} else {
 		title := strings.TrimSpace(article.Title.Val.(string))
 		if isWin {
 			title = legalizationFilenameForWindows(title)
 		}
 		// title := "thisistitle"
-		basePath = filepath.Join(filePath, title)
-		fileName = filepath.Join(basePath, title+".md")
+		basePath = filePath
+		fileName = filepath.Join(filePath, year, title+".md")
 	}
 
+	imgPath := filepath.Join(filePath, imagePath)
+
+	articlePath := filepath.Join(basePath, year)
+
 	// make basePath dir if not exists
-	if _, err := os.Stat(basePath); err != nil {
-		if err := os.MkdirAll(basePath, 0644); err != nil {
-			panic(err)
-		}
+	if err := createFolderIfNecessary(isWin, imgPath); err != nil {
+		return err
+	}
+
+	if err := createFolderIfNecessary(isWin, articlePath); err != nil {
+		return err
 	}
 
 	var saveImageBytes map[string][]byte
@@ -102,7 +117,7 @@ func FormatAndSave(article parse.Article, filePath string) error {
 	if len(saveImageBytes) > 0 {
 		for imgTitle := range saveImageBytes {
 			// save to local
-			imgfileName := filepath.Join(basePath, imgTitle)
+			imgfileName := filepath.Join(imgPath, imgTitle)
 			/* if err := ioutil.WriteFile(imgfileName, saveImageBytes[imgTitle], 0644); err != nil {
 				log.Fatalf("can not save image file: %s\n err: %v", imgfileName, err)
 				continue
@@ -256,7 +271,7 @@ func formatImageInline(piece parse.Piece) string {
 
 // 图片地址为本地引用
 func formatImageFileReferInline(alt string, refName string) string {
-	return "![" + alt + "](" + refName + ")  \n"
+	return "![" + alt + "](" + "../" + imagePath + "/" + refName + ")  \n"
 }
 
 // 图片转成base64并插在原地
@@ -272,4 +287,46 @@ func formatImageRefer(piece parse.Piece, index int) string {
 func formatLink(piece parse.Piece) string {
 	var linkMdStr string = "[" + piece.Val.(string) + "](" + piece.Attrs["href"] + ")  \n"
 	return linkMdStr
+}
+
+func chmodFolder(path string) error {
+	user, err := user.Current()
+	if err != nil {
+		return err
+	}
+
+	// Parse the UID and GID from the user
+	uid, err := strconv.Atoi(user.Uid)
+	if err != nil {
+		// Handle the error
+		fmt.Printf("Error converting UID to int: %v\n", err)
+		panic(err)
+	}
+
+	gid, err := strconv.Atoi(user.Gid)
+	if err != nil {
+		// Handle the error
+		fmt.Printf("Error converting GID to int: %v\n", err)
+		return err
+	}
+
+	if err = os.Chown(path, uid, gid); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createFolderIfNecessary(isWin bool, path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if err = os.MkdirAll(path, 0755); err != nil {
+			return err
+		}
+
+		if !isWin {
+			if err = chmodFolder(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

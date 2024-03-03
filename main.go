@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fengxxc/wechatmp2markdown/format"
 	"github.com/fengxxc/wechatmp2markdown/parse"
@@ -53,12 +54,14 @@ func main() {
 		}
 	}
 
-	var imagePolicy parse.ImagePolicy = parse.ImageArgValue2ImagePolicy(imageArgValue)
+	var imagePolicy = parse.ImageArgValue2ImagePolicy(imageArgValue)
 
 	// cli pattern
 	url := args1
 	filename := args2
 	fmt.Printf("url: %s, filename: %s\n", url, filename)
 	var articleStruct parse.Article = parse.ParseFromURL(url, imagePolicy)
-	format.FormatAndSave(articleStruct, filename)
+	// fmt.Println("article:", articleStruct.ToString())
+	fmt.Println("article meta:", articleStruct.Meta)
+	format.FormatAndSave(articleStruct, time.Now(), filename, articleStruct.Meta)
 }
